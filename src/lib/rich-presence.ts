@@ -50,9 +50,10 @@ export function activityFor(p: PresenceRow | null, now: Date, meta: Meta | null 
     name: p.device && p.device !== "Stremio" ? `on ${clean(p.device)}` : "on Stremio",
     details: clean(series && episode !== null ? `${p.title} · S${season}E${episode}` : p.title),
     detailsUrl: links?.title ?? "",
-    // "IMDb 6.2 · Jacob Elordi, Margaret Qualley, Josh Brolin", linked to IMDb.
+    // "IMDb 6.2 · Jacob Elordi, Margaret Qualley, Josh Brolin". Discord allows one link per line, so this one
+    // goes to the same page as the title.
     state: clean(state),
-    stateUrl: state && links ? links.imdb : "",
+    stateUrl: state && links ? links.title : "",
     image: p.poster ? p.poster.replace("/poster/small/", "/poster/medium/").replace(/\s/g, "") : "",
     imageUrl: links?.stremio ?? "",
     hover: links ? "Open in Stremio" : "",
@@ -93,7 +94,6 @@ function linksFor(base: string, videoId: string | null, series: boolean) {
   if (!videoId || !/^tt\d+$/.test(base)) return null;
   const imdb = `https://www.imdb.com/title/${base}/`;
   return {
-    imdb,
     title: series ? imdb : `https://letterboxd.com/imdb/${base}/`,
     stremio: `https://web.stremio.com/#/detail/${series ? "series" : "movie"}/${base}/${encodeURIComponent(videoId)}`,
   };

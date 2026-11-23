@@ -68,10 +68,10 @@ test("bad numbers become no timer instead of a value the host rejects", () => {
   assert.equal(activityFor(row({ poster: "https://x/poster/small/a\tb/img" }), now)!.image, "https://x/poster/medium/ab/img");
 });
 
-test("rating and top 3 cast in the small line, linked to IMDb", () => {
+test("rating and top 3 cast in the small line, linked like the title", () => {
   const meta = { rating: "8.4", cast: ["Matt Damon", "Tom Holland", "Anne Hathaway", "Zendaya"] };
   const movie = activityFor(row({}), now, meta)!;
   assert.equal(movie.state, "IMDb 8.4 · Matt Damon, Tom Holland, Anne Hathaway");
-  assert.equal(movie.stateUrl, "https://www.imdb.com/title/tt33764258/");
+  assert.equal(movie.stateUrl, "https://letterboxd.com/imdb/tt33764258/");
   assert.equal(activityFor(row({ state: "idle" }), now, meta)!.state, "Paused · IMDb 8.4 · Matt Damon, Tom Holland, Anne Hathaway");
 });
