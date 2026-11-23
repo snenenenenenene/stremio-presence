@@ -1,7 +1,7 @@
 // One Discord Social SDK client for one user, driven by worker/rich-presence.ts over stdin.
 // Env: DISCORD_APP_ID. Input lines are tab-separated:
 //   token <access_token>                        sign in (first time) or swap in a refreshed token
-//   set <name> <details> <state> <image> <hover> <start> <end> [<label> <url>]...
+//   set <name> <details> <details_url> <state> <state_url> <image> <image_url> <hover> <start> <end> [<label> <url>]...
 //                                               show "Watching <name>"; empty fields are left out;
 //                                               start/end are unix seconds, 0 = none; up to 2 buttons
 //   clear                                       remove the activity
@@ -22,7 +22,7 @@
 #include <vector>
 
 struct Wanted {
-  std::string name, details, state, image, hover;
+  std::string name, details, detailsUrl, state, stateUrl, image, imageUrl, hover;
   std::vector<std::pair<std::string, std::string>> buttons;  // label, url
   uint64_t start = 0, end = 0;
 };
@@ -81,15 +81,18 @@ int main() {
     }
     discordpp::Activity a;
     a.SetType(discordpp::ActivityTypes::Watching);
-    // The title is the activity name, so the card reads "Watching <title>" instead of the app name.
+    // The header reads "Watching <name>" (the device); the title is the details line so it can be a link.
     a.SetName(wanted->name);
-    a.SetStatusDisplayType(discordpp::StatusDisplayTypes::Name);
+    a.SetStatusDisplayType(discordpp::StatusDisplayTypes::Details);
     if (!wanted->details.empty()) a.SetDetails(wanted->details);
+    if (!wanted->detailsUrl.empty()) a.SetDetailsUrl(wanted->detailsUrl);
     if (!wanted->state.empty()) a.SetState(wanted->state);
+    if (!wanted->stateUrl.empty()) a.SetStateUrl(wanted->stateUrl);
     if (!wanted->image.empty()) {
       discordpp::ActivityAssets assets;
       assets.SetLargeImage(wanted->image);
       assets.SetLargeText(wanted->hover.empty() ? wanted->name : wanted->hover);
+      if (!wanted->imageUrl.empty()) assets.SetLargeUrl(wanted->imageUrl);
       a.SetAssets(assets);
     }
     for (const auto& [label, url] : wanted->buttons) {
@@ -133,10 +136,10 @@ int main() {
         if (!r.Successful()) { std::cout << "error token " << r.Error() << std::endl; exitCode = 4; quit = true; return; }
         if (!connecting) { connecting = true; client->Connect(); }
       });
-    } else if (f[0] == "set" && f.size() >= 8 && f.size() <= 12 && f.size() % 2 == 0) {
-      Wanted w{f[1], f[2], f[3], f[4], f[5]};
-      for (size_t i = 8; i + 1 < f.size(); i += 2) w.buttons.emplace_back(f[i], f[i + 1]);
-      if (!parseU64(f[6], w.start) || !parseU64(f[7], w.end)) { std::cout << "error bad timestamps" << std::endl; return; }
+    } else if (f[0] == "set" && f.size() >= 11 && f.size() <= 15 && f.size() % 2 == 1) {
+      Wanted w{f[1], f[2], f[3], f[4], f[5], f[6], f[7], f[8]};
+      for (size_t i = 11; i + 1 < f.size(); i += 2) w.buttons.emplace_back(f[i], f[i + 1]);
+      if (!parseU64(f[9], w.start) || !parseU64(f[10], w.end)) { std::cout << "error bad timestamps" << std::endl; return; }
       wanted = w;
       dirty = true;
     } else if (f[0] == "clear") {

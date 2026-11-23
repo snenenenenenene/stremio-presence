@@ -16,7 +16,8 @@ export type PresenceRow = {
 
 export type Button = { label: string; url: string };
 export type Activity = {
-  name: string; details: string; state: string; image: string; hover: string;
+  name: string; details: string; detailsUrl: string; state: string; stateUrl: string;
+  image: string; imageUrl: string; hover: string;
   start: number; end: number; buttons: Button[];
 };
 // From Stremio's Cinemeta catalog; null when it has nothing or could not be reached.
@@ -33,7 +34,7 @@ export function activityFor(p: PresenceRow | null, now: Date, meta: Meta | null 
   const state = [
     playing ? null : "Paused",
     meta?.rating ? `IMDb ${meta.rating}` : null,
-    p.device && p.device !== "Stremio" ? `on ${p.device}` : null,
+    meta?.cast.slice(0, 3).join(", ") || null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -43,17 +44,21 @@ export function activityFor(p: PresenceRow | null, now: Date, meta: Meta | null 
   const start = playing ? secs((p.lastSavedAt!.getTime() - p.positionMs!) / 1000) : 0;
   const end = start && p.durationMs ? start + secs(p.durationMs / 1000) : 0;
   const series = season !== null;
+  const links = linksFor(base, p.videoId, series);
   return {
-    name: clean(p.title),
-    // The title is already the header. The bold line is only the episode number (a movie has none): long text
-    // there wraps badly. The rating goes in the small line, the cast in the poster's hover text.
-    details: series && episode !== null ? `Season ${season}, Episode ${episode}` : "",
+    // Header: "Watching on Apple TV". The title is the bold line, because only that line can be a link.
+    name: p.device && p.device !== "Stremio" ? `on ${clean(p.device)}` : "on Stremio",
+    details: clean(series && episode !== null ? `${p.title} · S${season}E${episode}` : p.title),
+    detailsUrl: links?.title ?? "",
+    // "IMDb 6.2 · Jacob Elordi, Margaret Qualley, Josh Brolin", linked to IMDb.
     state: clean(state),
+    stateUrl: state && links ? links.imdb : "",
     image: p.poster ? p.poster.replace("/poster/small/", "/poster/medium/").replace(/\s/g, "") : "",
-    hover: clean(meta?.cast.slice(0, 3).join(", ") ?? ""),
+    imageUrl: links?.stremio ?? "",
+    hover: links ? "Open in Stremio" : "",
     start,
     end,
-    buttons: buttonsFor(base, p.videoId, series),
+    buttons: links ? [{ label: "Open in Stremio", url: links.stremio }, { label: series ? "IMDb" : "Letterboxd", url: links.title }] : [],
   };
 }
 
@@ -66,6 +71,9 @@ export function sameActivity(a: Activity | null, b: Activity | null): boolean {
     a.name === b.name &&
     a.details === b.details &&
     a.hover === b.hover &&
+    a.detailsUrl === b.detailsUrl &&
+    a.stateUrl === b.stateUrl &&
+    a.imageUrl === b.imageUrl &&
     JSON.stringify(a.buttons) === JSON.stringify(b.buttons) &&
     a.state === b.state &&
     a.image === b.image &&
@@ -76,17 +84,17 @@ export function sameActivity(a: Activity | null, b: Activity | null): boolean {
 
 export function hostLine(a: Activity | null): string {
   if (!a) return "clear";
-  return ["set", a.name, a.details, a.state, a.image, a.hover, a.start, a.end, ...a.buttons.flatMap((b) => [b.label, b.url])].join("\t");
+  return ["set", a.name, a.details, a.detailsUrl, a.state, a.stateUrl, a.image, a.imageUrl, a.hover, a.start, a.end, ...a.buttons.flatMap((b) => [b.label, b.url])].join("\t");
 }
 
-// Discord shows at most two buttons and only takes https links. Only IMDb ids: other catalogs' ids do not
-// resolve on Stremio Web, Letterboxd or IMDb.
-function buttonsFor(base: string, videoId: string | null, series: boolean): Button[] {
-  if (!videoId || !/^tt\d+$/.test(base)) return [];
-  return [
-    { label: "Open in Stremio", url: `https://web.stremio.com/#/detail/${series ? "series" : "movie"}/${base}/${encodeURIComponent(videoId)}` },
-    series
-      ? { label: "IMDb", url: `https://www.imdb.com/title/${base}/` }
-      : { label: "Letterboxd", url: `https://letterboxd.com/imdb/${base}/` },
-  ];
+// Discord only takes https links. Only IMDb ids: other catalogs' ids do not resolve on Stremio Web, Letterboxd
+// or IMDb. The title links to Letterboxd for a film (it has no series) and to IMDb for a series.
+function linksFor(base: string, videoId: string | null, series: boolean) {
+  if (!videoId || !/^tt\d+$/.test(base)) return null;
+  const imdb = `https://www.imdb.com/title/${base}/`;
+  return {
+    imdb,
+    title: series ? imdb : `https://letterboxd.com/imdb/${base}/`,
+    stremio: `https://web.stremio.com/#/detail/${series ? "series" : "movie"}/${base}/${encodeURIComponent(videoId)}`,
+  };
 }
