@@ -7,7 +7,8 @@ import { and, eq } from "drizzle-orm";
 import type { NeonHttpDatabase } from "drizzle-orm/neon-http";
 import * as schema from "../src/db/schema.ts";
 import { decrypt, encrypt } from "../src/lib/crypto.ts";
-import { activityFor, hostLine, sameActivity, type Activity } from "../src/lib/rich-presence.ts";
+import { activityFor, hostLine, sameActivity, type Activity, type Meta } from "../src/lib/rich-presence.ts";
+import { parseVideoId } from "../src/lib/addon.ts";
 
 type Db = NeonHttpDatabase<typeof schema>;
 type Host = { proc: ChildProcessWithoutNullStreams; sent: Activity | null; tokenEnc: string };
@@ -120,7 +121,9 @@ export async function syncRichPresence(db: Db, now = new Date()) {
   for (const { t, p } of rows) {
     seen.add(t.userId);
     try {
-      const want = activityFor(p, now);
+      // Rating and cast only for rows that will show, so stopped users never wait on Cinemeta.
+      const plain = activityFor(p, now);
+      const want = plain && p?.videoId ? activityFor(p, now, await metaFor(p.videoId, now)) : plain;
       let host = hosts.get(t.userId);
       if (!want) {
         if (host) stopHost(t.userId);
@@ -156,4 +159,23 @@ export async function stopAllHosts() {
   await Promise.all(
     [...stopping.values()].map((proc) => new Promise((r) => { proc.once("exit", r); setTimeout(r, STOP_GRACE_MS + 500); })),
   );
+}
+
+// Rating and cast from Stremio's public Cinemeta catalog, cached per title: a day when found, 10 minutes when not.
+const CINEMETA = "https://v3-cinemeta.strem.io/meta";
+const metaCache = new Map<string, { meta: Meta | null; until: number }>();
+
+async function metaFor(videoId: string, now: Date): Promise<Meta | null> {
+  const { base, season } = parseVideoId(videoId);
+  if (!/^tt\d+$/.test(base)) return null;
+  const hit = metaCache.get(base);
+  if (hit && hit.until > now.getTime()) return hit.meta;
+  let meta: Meta | null = null;
+  try {
+    const res = await fetch(`${CINEMETA}/${season === null ? "movie" : "series"}/${base}.json`, { signal: AbortSignal.timeout(2000) });
+    const m = res.ok ? ((await res.json()) as { meta?: { imdbRating?: string; cast?: string[] } }).meta : undefined;
+    if (m) meta = { rating: m.imdbRating || null, cast: (m.cast ?? []).filter((c) => typeof c === "string") };
+  } catch {} // no rating or cast this time; the status still shows
+  metaCache.set(base, { meta, until: now.getTime() + (meta ? 86_400_000 : 600_000) });
+  return meta;
 }

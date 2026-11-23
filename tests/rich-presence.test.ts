@@ -13,8 +13,12 @@ test("playing movie: timer from the saved position, medium poster, device", () =
   const a = activityFor(row({}), now)!;
   const start = Math.round((now.getTime() - 30_000 - 600_000) / 1000);
   assert.deepEqual(a, {
-    name: "The Odyssey", details: "", state: "on Mac", image: "https://images.metahub.space/poster/medium/tt33764258/img",
+    name: "The Odyssey", details: "", state: "on Mac", hover: "", image: "https://images.metahub.space/poster/medium/tt33764258/img",
     start, end: start + 7200,
+    buttons: [
+      { label: "Open in Stremio", url: "https://web.stremio.com/#/detail/movie/tt33764258/tt33764258" },
+      { label: "Letterboxd", url: "https://letterboxd.com/imdb/tt33764258/" },
+    ],
   });
 });
 
@@ -23,6 +27,11 @@ test("paused episode has no timer and says Paused", () => {
   assert.equal(a.name, "The Odyssey");
   assert.equal(a.details, "Season 1, Episode 2");
   assert.equal(a.state, "Paused");
+  assert.deepEqual(a.buttons.map((b) => b.url), [
+    "https://web.stremio.com/#/detail/series/tt0944947/tt0944947%3A1%3A2",
+    "https://www.imdb.com/title/tt0944947/",
+  ]);
+  assert.deepEqual(activityFor(row({ videoId: "kitsu:1:2" }), now)!.buttons, []);
   assert.equal(a.start, 0);
   assert.equal(a.end, 0);
 });
@@ -36,7 +45,7 @@ test("off, untitled and stale rows clear the activity", () => {
 
 test("tabs and newlines cannot break the host protocol", () => {
   const line = hostLine(activityFor(row({ title: "A\tB\nC", device: "Mac\t" }), now));
-  assert.equal(line.split("\t").length, 7);
+  assert.equal(line.split("\t").length, 12);
   assert.ok(!line.includes("\n"));
   assert.equal(hostLine(null), "clear");
 });
@@ -55,4 +64,13 @@ test("bad numbers become no timer instead of a value the host rejects", () => {
   assert.equal(a.end, 0);
   assert.equal(activityFor(row({ lastSavedAt: new Date(0), positionMs: 9e12 }), now)!.start, 0);
   assert.equal(activityFor(row({ poster: "https://x/poster/small/a\tb/img" }), now)!.image, "https://x/poster/medium/ab/img");
+});
+
+test("rating and cast: second line for a movie, poster hover for an episode", () => {
+  const meta = { rating: "8.4", cast: ["Matt Damon", "Tom Holland", "Anne Hathaway", "Zendaya"] };
+  assert.equal(activityFor(row({}), now, meta)!.details, "IMDb 8.4 · Matt Damon, Tom Holland, Anne Hathaway");
+  const ep = activityFor(row({ videoId: "tt0944947:1:2" }), now, meta)!;
+  assert.equal(ep.details, "Season 1, Episode 2");
+  assert.equal(ep.hover, "IMDb 8.4 · Matt Damon, Tom Holland, Anne Hathaway");
+  assert.equal(activityFor(row({}), now, { rating: null, cast: [] })!.details, "");
 });

@@ -14,15 +14,21 @@ export type PresenceRow = {
   updatedAt: Date;
 };
 
-export type Activity = { name: string; details: string; state: string; image: string; start: number; end: number };
+export type Button = { label: string; url: string };
+export type Activity = {
+  name: string; details: string; state: string; image: string; hover: string;
+  start: number; end: number; buttons: Button[];
+};
+// From Stremio's Cinemeta catalog; null when it has nothing or could not be reached.
+export type Meta = { rating: string | null; cast: string[] };
 
 // Discord caps details and state at 128 characters; tabs and newlines would break the host's line protocol.
 const clean = (s: string) => s.replace(/\s+/g, " ").trim().slice(0, 128);
 
-export function activityFor(p: PresenceRow | null, now: Date): Activity | null {
+export function activityFor(p: PresenceRow | null, now: Date, meta: Meta | null = null): Activity | null {
   if (!p || p.state === "off" || !p.title) return null;
   if (now.getTime() - p.updatedAt.getTime() > PRESENCE_MAX_AGE_MS) return null;
-  const { season, episode } = parseVideoId(p.videoId ?? "");
+  const { base, season, episode } = parseVideoId(p.videoId ?? "");
   const playing = p.state === "playing" && p.lastSavedAt !== null && p.positionMs !== null;
   const state = [
     playing ? null : "Paused",
@@ -35,14 +41,20 @@ export function activityFor(p: PresenceRow | null, now: Date): Activity | null {
   const secs = (n: number) => (Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0);
   const start = playing ? secs((p.lastSavedAt!.getTime() - p.positionMs!) / 1000) : 0;
   const end = start && p.durationMs ? start + secs(p.durationMs / 1000) : 0;
+  const series = season !== null;
+  // "IMDb 8.4 · Matt Damon, Tom Holland, Anne Hathaway"
+  const about = [meta?.rating ? `IMDb ${meta.rating}` : null, meta?.cast.slice(0, 3).join(", ") || null].filter(Boolean).join(" · ");
   return {
     name: clean(p.title),
-    // The title is already the header; a movie needs no second line, an episode gets its number.
-    details: season !== null && episode !== null ? `Season ${season}, Episode ${episode}` : "",
+    // The title is already the header. A movie's second line is its rating and cast; an episode's is its
+    // number, with rating and cast on the poster's hover text instead.
+    details: clean(series && episode !== null ? `Season ${season}, Episode ${episode}` : about),
     state: clean(state),
     image: p.poster ? p.poster.replace("/poster/small/", "/poster/medium/").replace(/\s/g, "") : "",
+    hover: clean(series ? about : ""),
     start,
     end,
+    buttons: buttonsFor(base, p.videoId, series),
   };
 }
 
@@ -54,6 +66,8 @@ export function sameActivity(a: Activity | null, b: Activity | null): boolean {
   return (
     a.name === b.name &&
     a.details === b.details &&
+    a.hover === b.hover &&
+    JSON.stringify(a.buttons) === JSON.stringify(b.buttons) &&
     a.state === b.state &&
     a.image === b.image &&
     Math.abs(a.start - b.start) <= SEEK_TOLERANCE_S &&
@@ -62,5 +76,18 @@ export function sameActivity(a: Activity | null, b: Activity | null): boolean {
 }
 
 export function hostLine(a: Activity | null): string {
-  return a ? ["set", a.name, a.details, a.state, a.image, a.start, a.end].join("\t") : "clear";
+  if (!a) return "clear";
+  return ["set", a.name, a.details, a.state, a.image, a.hover, a.start, a.end, ...a.buttons.flatMap((b) => [b.label, b.url])].join("\t");
+}
+
+// Discord shows at most two buttons and only takes https links. Only IMDb ids: other catalogs' ids do not
+// resolve on Stremio Web, Letterboxd or IMDb.
+function buttonsFor(base: string, videoId: string | null, series: boolean): Button[] {
+  if (!videoId || !/^tt\d+$/.test(base)) return [];
+  return [
+    { label: "Open in Stremio", url: `https://web.stremio.com/#/detail/${series ? "series" : "movie"}/${base}/${encodeURIComponent(videoId)}` },
+    series
+      ? { label: "IMDb", url: `https://www.imdb.com/title/${base}/` }
+      : { label: "Letterboxd", url: `https://letterboxd.com/imdb/${base}/` },
+  ];
 }

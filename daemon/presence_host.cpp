@@ -1,9 +1,9 @@
 // One Discord Social SDK client for one user, driven by worker/rich-presence.ts over stdin.
 // Env: DISCORD_APP_ID. Input lines are tab-separated:
 //   token <access_token>                        sign in (first time) or swap in a refreshed token
-//   set <name> <details> <state> <image> <start> <end>
-//                                               show "Watching <name>"; empty details/state are left out;
-//                                               start/end are unix seconds, 0 = none
+//   set <name> <details> <state> <image> <hover> <start> <end> [<label> <url>]...
+//                                               show "Watching <name>"; empty fields are left out;
+//                                               start/end are unix seconds, 0 = none; up to 2 buttons
 //   clear                                       remove the activity
 // End of input clears the activity and exits. Output lines: "status <s>", "ok", "fail <why>", "error <why>".
 // Exit codes: 0 done, 2 bad setup, 3 gave up after a network error (retry), 4 token refused (refresh first).
@@ -22,7 +22,8 @@
 #include <vector>
 
 struct Wanted {
-  std::string name, details, state, image;
+  std::string name, details, state, image, hover;
+  std::vector<std::pair<std::string, std::string>> buttons;  // label, url
   uint64_t start = 0, end = 0;
 };
 
@@ -88,8 +89,14 @@ int main() {
     if (!wanted->image.empty()) {
       discordpp::ActivityAssets assets;
       assets.SetLargeImage(wanted->image);
-      assets.SetLargeText(wanted->name);
+      assets.SetLargeText(wanted->hover.empty() ? wanted->name : wanted->hover);
       a.SetAssets(assets);
+    }
+    for (const auto& [label, url] : wanted->buttons) {
+      discordpp::ActivityButton b;
+      b.SetLabel(label);
+      b.SetUrl(url);
+      a.AddButton(b);
     }
     if (wanted->start || wanted->end) {
       discordpp::ActivityTimestamps ts;
@@ -126,9 +133,10 @@ int main() {
         if (!r.Successful()) { std::cout << "error token " << r.Error() << std::endl; exitCode = 4; quit = true; return; }
         if (!connecting) { connecting = true; client->Connect(); }
       });
-    } else if (f[0] == "set" && f.size() == 7) {
-      Wanted w{f[1], f[2], f[3], f[4]};
-      if (!parseU64(f[5], w.start) || !parseU64(f[6], w.end)) { std::cout << "error bad timestamps" << std::endl; return; }
+    } else if (f[0] == "set" && f.size() >= 8 && f.size() <= 12 && f.size() % 2 == 0) {
+      Wanted w{f[1], f[2], f[3], f[4], f[5]};
+      for (size_t i = 8; i + 1 < f.size(); i += 2) w.buttons.emplace_back(f[i], f[i + 1]);
+      if (!parseU64(f[6], w.start) || !parseU64(f[7], w.end)) { std::cout << "error bad timestamps" << std::endl; return; }
       wanted = w;
       dirty = true;
     } else if (f[0] == "clear") {
