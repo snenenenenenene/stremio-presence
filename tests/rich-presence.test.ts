@@ -13,14 +13,16 @@ test("playing movie: timer from the saved position, medium poster, device", () =
   const a = activityFor(row({}), now)!;
   const start = Math.round((now.getTime() - 30_000 - 600_000) / 1000);
   assert.deepEqual(a, {
-    details: "The Odyssey", state: "on Mac", image: "https://images.metahub.space/poster/medium/tt33764258/img",
+    name: "The Odyssey", details: "", state: "on Mac", image: "https://images.metahub.space/poster/medium/tt33764258/img",
     start, end: start + 7200,
   });
 });
 
 test("paused episode has no timer and says Paused", () => {
   const a = activityFor(row({ state: "idle", videoId: "tt0944947:1:2", device: "Stremio" }), now)!;
-  assert.equal(a.state, "Paused · S1E2");
+  assert.equal(a.name, "The Odyssey");
+  assert.equal(a.details, "Season 1, Episode 2");
+  assert.equal(a.state, "Paused");
   assert.equal(a.start, 0);
   assert.equal(a.end, 0);
 });
@@ -34,7 +36,7 @@ test("off, untitled and stale rows clear the activity", () => {
 
 test("tabs and newlines cannot break the host protocol", () => {
   const line = hostLine(activityFor(row({ title: "A\tB\nC", device: "Mac\t" }), now));
-  assert.equal(line.split("\t").length, 6);
+  assert.equal(line.split("\t").length, 7);
   assert.ok(!line.includes("\n"));
   assert.equal(hostLine(null), "clear");
 });

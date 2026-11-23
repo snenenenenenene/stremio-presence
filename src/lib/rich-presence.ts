@@ -14,7 +14,7 @@ export type PresenceRow = {
   updatedAt: Date;
 };
 
-export type Activity = { details: string; state: string; image: string; start: number; end: number };
+export type Activity = { name: string; details: string; state: string; image: string; start: number; end: number };
 
 // Discord caps details and state at 128 characters; tabs and newlines would break the host's line protocol.
 const clean = (s: string) => s.replace(/\s+/g, " ").trim().slice(0, 128);
@@ -26,7 +26,6 @@ export function activityFor(p: PresenceRow | null, now: Date): Activity | null {
   const playing = p.state === "playing" && p.lastSavedAt !== null && p.positionMs !== null;
   const state = [
     playing ? null : "Paused",
-    season !== null && episode !== null ? `S${season}E${episode}` : null,
     p.device && p.device !== "Stremio" ? `on ${p.device}` : null,
   ]
     .filter(Boolean)
@@ -37,7 +36,9 @@ export function activityFor(p: PresenceRow | null, now: Date): Activity | null {
   const start = playing ? secs((p.lastSavedAt!.getTime() - p.positionMs!) / 1000) : 0;
   const end = start && p.durationMs ? start + secs(p.durationMs / 1000) : 0;
   return {
-    details: clean(p.title),
+    name: clean(p.title),
+    // The title is already the header; a movie needs no second line, an episode gets its number.
+    details: season !== null && episode !== null ? `Season ${season}, Episode ${episode}` : "",
     state: clean(state),
     image: p.poster ? p.poster.replace("/poster/small/", "/poster/medium/").replace(/\s/g, "") : "",
     start,
@@ -51,6 +52,7 @@ const SEEK_TOLERANCE_S = 30;
 export function sameActivity(a: Activity | null, b: Activity | null): boolean {
   if (!a || !b) return a === b;
   return (
+    a.name === b.name &&
     a.details === b.details &&
     a.state === b.state &&
     a.image === b.image &&
@@ -60,5 +62,5 @@ export function sameActivity(a: Activity | null, b: Activity | null): boolean {
 }
 
 export function hostLine(a: Activity | null): string {
-  return a ? ["set", a.details, a.state, a.image, a.start, a.end].join("\t") : "clear";
+  return a ? ["set", a.name, a.details, a.state, a.image, a.start, a.end].join("\t") : "clear";
 }

@@ -1,7 +1,9 @@
 // One Discord Social SDK client for one user, driven by worker/rich-presence.ts over stdin.
 // Env: DISCORD_APP_ID. Input lines are tab-separated:
 //   token <access_token>                        sign in (first time) or swap in a refreshed token
-//   set <details> <state> <image> <start> <end> show "Watching"; start/end are unix seconds, 0 = none
+//   set <name> <details> <state> <image> <start> <end>
+//                                               show "Watching <name>"; empty details/state are left out;
+//                                               start/end are unix seconds, 0 = none
 //   clear                                       remove the activity
 // End of input clears the activity and exits. Output lines: "status <s>", "ok", "fail <why>", "error <why>".
 // Exit codes: 0 done, 2 bad setup, 3 gave up after a network error (retry), 4 token refused (refresh first).
@@ -20,7 +22,7 @@
 #include <vector>
 
 struct Wanted {
-  std::string details, state, image;
+  std::string name, details, state, image;
   uint64_t start = 0, end = 0;
 };
 
@@ -78,13 +80,15 @@ int main() {
     }
     discordpp::Activity a;
     a.SetType(discordpp::ActivityTypes::Watching);
-    a.SetStatusDisplayType(discordpp::StatusDisplayTypes::Details);
-    a.SetDetails(wanted->details);
+    // The title is the activity name, so the card reads "Watching <title>" instead of the app name.
+    a.SetName(wanted->name);
+    a.SetStatusDisplayType(discordpp::StatusDisplayTypes::Name);
+    if (!wanted->details.empty()) a.SetDetails(wanted->details);
     if (!wanted->state.empty()) a.SetState(wanted->state);
     if (!wanted->image.empty()) {
       discordpp::ActivityAssets assets;
       assets.SetLargeImage(wanted->image);
-      assets.SetLargeText(wanted->details);
+      assets.SetLargeText(wanted->name);
       a.SetAssets(assets);
     }
     if (wanted->start || wanted->end) {
@@ -122,9 +126,9 @@ int main() {
         if (!r.Successful()) { std::cout << "error token " << r.Error() << std::endl; exitCode = 4; quit = true; return; }
         if (!connecting) { connecting = true; client->Connect(); }
       });
-    } else if (f[0] == "set" && f.size() == 6) {
-      Wanted w{f[1], f[2], f[3]};
-      if (!parseU64(f[4], w.start) || !parseU64(f[5], w.end)) { std::cout << "error bad timestamps" << std::endl; return; }
+    } else if (f[0] == "set" && f.size() == 7) {
+      Wanted w{f[1], f[2], f[3], f[4]};
+      if (!parseU64(f[5], w.start) || !parseU64(f[6], w.end)) { std::cout << "error bad timestamps" << std::endl; return; }
       wanted = w;
       dirty = true;
     } else if (f[0] == "clear") {
