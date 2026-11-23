@@ -10,6 +10,7 @@ import { computePresence, IDLE_WINDOW_MS, DEVICE_LOOKBACK_MS, presenceChanged, t
 import { guildsOfUser, refreshGuildBoards } from "../src/lib/boards.ts";
 import { changedItemIds, getItems, StremioError } from "../src/lib/stremio.ts";
 import { stopAllHosts, syncRichPresence } from "./rich-presence.ts";
+import { keepBotOnline } from "./gateway.ts";
 
 const INTERVAL = Number(process.env.POLL_INTERVAL_MS ?? 60_000);
 const db = drizzle(neon(process.env.DATABASE_URL!), { schema });
@@ -117,6 +118,7 @@ for (const sig of ["SIGTERM", "SIGINT"] as const) {
 if (process.argv.includes("--once")) {
   await pass();
 } else {
+  if (process.env.DISCORD_BOT_TOKEN) keepBotOnline(process.env.DISCORD_BOT_TOKEN);
   for (;;) {
     const started = Date.now();
     await passAndSync();
