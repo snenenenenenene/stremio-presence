@@ -25,17 +25,24 @@ test("playing movie: device header, linked title, timer, poster opens Stremio", 
   });
 });
 
-test("paused episode: no timer, episode in the title, IMDb links", () => {
-  const a = activityFor(row({ state: "idle", videoId: "tt0944947:1:2", device: "Stremio" }), now)!;
+test("episode: episode in the title, IMDb links", () => {
+  const a = activityFor(row({ videoId: "tt0944947:1:2", device: "Stremio" }), now)!;
   assert.equal(a.name, "on Stremio");
   assert.equal(a.details, "The Odyssey · S1E2");
   assert.equal(a.detailsUrl, "https://www.imdb.com/title/tt0944947/");
-  assert.equal(a.state, "Paused");
-  assert.equal(a.start, 0);
-  assert.equal(a.end, 0);
   assert.equal(a.imageUrl, "https://web.stremio.com/#/detail/series/tt0944947/tt0944947%3A1%3A2");
   assert.deepEqual(activityFor(row({ videoId: "kitsu:1:2" }), now)!.buttons, []);
   assert.equal(activityFor(row({ videoId: "kitsu:1:2" }), now)!.detailsUrl, "");
+});
+
+test("no saves for a while: keeps the timer until the title would end, then clears", () => {
+  const ago = (ms: number) => new Date(now.getTime() - ms);
+  const quiet = activityFor(row({ state: "idle", lastSavedAt: ago(9 * 60_000) }), now)!;
+  assert.ok(quiet.start > 0);
+  assert.ok(!quiet.state.includes("Paused"));
+  assert.equal(activityFor(row({ state: "idle", lastSavedAt: ago(16 * 60_000) }), now), null);
+  // 2 minutes left at the last save, 3 minutes ago: it has ended.
+  assert.equal(activityFor(row({ state: "idle", positionMs: 7_080_000, lastSavedAt: ago(3 * 60_000) }), now), null);
 });
 
 test("off, untitled and stale rows clear the activity", () => {
@@ -73,5 +80,4 @@ test("rating and top 3 cast in the small line, linked like the title", () => {
   const movie = activityFor(row({}), now, meta)!;
   assert.equal(movie.state, "IMDb 8.4 · Matt Damon, Tom Holland, Anne Hathaway");
   assert.equal(movie.stateUrl, "https://letterboxd.com/imdb/tt33764258/");
-  assert.equal(activityFor(row({ state: "idle" }), now, meta)!.state, "Paused · IMDb 8.4 · Matt Damon, Tom Holland, Anne Hathaway");
 });

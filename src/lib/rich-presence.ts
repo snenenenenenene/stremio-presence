@@ -1,6 +1,6 @@
 // What a user's own Discord profile shows ("Watching …"), built from their presence row.
 import { parseVideoId } from "./addon.ts";
-import { PRESENCE_MAX_AGE_MS } from "./presence.ts";
+import { IDLE_WINDOW_MS, PRESENCE_MAX_AGE_MS } from "./presence.ts";
 
 export type PresenceRow = {
   state: "playing" | "idle" | "off";
@@ -30,9 +30,13 @@ export function activityFor(p: PresenceRow | null, now: Date, meta: Meta | null 
   if (!p || p.state === "off" || !p.title) return null;
   if (now.getTime() - p.updatedAt.getTime() > PRESENCE_MAX_AGE_MS) return null;
   const { base, season, episode } = parseVideoId(p.videoId ?? "");
-  const playing = p.state === "playing" && p.lastSavedAt !== null && p.positionMs !== null;
+  // Stremio never says "paused", and Apple TV can go minutes without saving while it plays. So a quiet gap is
+  // read as still playing until the title would have ended (at most IDLE_WINDOW after the last save), then cleared.
+  if (p.lastSavedAt === null || p.positionMs === null) return null;
+  const sinceSave = now.getTime() - p.lastSavedAt.getTime();
+  const left = p.durationMs ? p.durationMs - p.positionMs : Infinity;
+  if (p.state !== "playing" && (sinceSave > IDLE_WINDOW_MS || sinceSave > left)) return null;
   const state = [
-    playing ? null : "Paused",
     meta?.rating ? `IMDb ${meta.rating}` : null,
     meta?.cast.slice(0, 3).join(", ") || null,
   ]
@@ -41,7 +45,7 @@ export function activityFor(p: PresenceRow | null, now: Date, meta: Meta | null 
   // Start is when playback would have begun at this speed, so Discord's timer shows the real position.
   // Clamped to whole non-negative seconds: the host rejects anything else.
   const secs = (n: number) => (Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0);
-  const start = playing ? secs((p.lastSavedAt!.getTime() - p.positionMs!) / 1000) : 0;
+  const start = secs((p.lastSavedAt.getTime() - p.positionMs) / 1000);
   const end = start && p.durationMs ? start + secs(p.durationMs / 1000) : 0;
   const series = season !== null;
   const links = linksFor(base, p.videoId, series);
