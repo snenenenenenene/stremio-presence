@@ -32,6 +32,7 @@ export function activityFor(p: PresenceRow | null, now: Date, meta: Meta | null 
   const playing = p.state === "playing" && p.lastSavedAt !== null && p.positionMs !== null;
   const state = [
     playing ? null : "Paused",
+    meta?.rating ? `IMDb ${meta.rating}` : null,
     p.device && p.device !== "Stremio" ? `on ${p.device}` : null,
   ]
     .filter(Boolean)
@@ -42,16 +43,14 @@ export function activityFor(p: PresenceRow | null, now: Date, meta: Meta | null 
   const start = playing ? secs((p.lastSavedAt!.getTime() - p.positionMs!) / 1000) : 0;
   const end = start && p.durationMs ? start + secs(p.durationMs / 1000) : 0;
   const series = season !== null;
-  // "IMDb 8.4 · Matt Damon, Tom Holland, Anne Hathaway"
-  const about = [meta?.rating ? `IMDb ${meta.rating}` : null, meta?.cast.slice(0, 3).join(", ") || null].filter(Boolean).join(" · ");
   return {
     name: clean(p.title),
-    // The title is already the header. A movie's second line is its rating and cast; an episode's is its
-    // number, with rating and cast on the poster's hover text instead.
-    details: clean(series && episode !== null ? `Season ${season}, Episode ${episode}` : about),
+    // The title is already the header. The bold line is only the episode number (a movie has none): long text
+    // there wraps badly. The rating goes in the small line, the cast in the poster's hover text.
+    details: series && episode !== null ? `Season ${season}, Episode ${episode}` : "",
     state: clean(state),
     image: p.poster ? p.poster.replace("/poster/small/", "/poster/medium/").replace(/\s/g, "") : "",
-    hover: clean(series ? about : ""),
+    hover: clean(meta?.cast.slice(0, 3).join(", ") ?? ""),
     start,
     end,
     buttons: buttonsFor(base, p.videoId, series),

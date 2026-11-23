@@ -66,11 +66,14 @@ test("bad numbers become no timer instead of a value the host rejects", () => {
   assert.equal(activityFor(row({ poster: "https://x/poster/small/a\tb/img" }), now)!.image, "https://x/poster/medium/ab/img");
 });
 
-test("rating and cast: second line for a movie, poster hover for an episode", () => {
+test("rating in the small line, cast on the poster hover, bold line only for episodes", () => {
   const meta = { rating: "8.4", cast: ["Matt Damon", "Tom Holland", "Anne Hathaway", "Zendaya"] };
-  assert.equal(activityFor(row({}), now, meta)!.details, "IMDb 8.4 · Matt Damon, Tom Holland, Anne Hathaway");
-  const ep = activityFor(row({ videoId: "tt0944947:1:2" }), now, meta)!;
+  const movie = activityFor(row({}), now, meta)!;
+  assert.equal(movie.details, "");
+  assert.equal(movie.state, "IMDb 8.4 · on Mac");
+  assert.equal(movie.hover, "Matt Damon, Tom Holland, Anne Hathaway");
+  const ep = activityFor(row({ state: "idle", videoId: "tt0944947:1:2" }), now, meta)!;
   assert.equal(ep.details, "Season 1, Episode 2");
-  assert.equal(ep.hover, "IMDb 8.4 · Matt Damon, Tom Holland, Anne Hathaway");
-  assert.equal(activityFor(row({}), now, { rating: null, cast: [] })!.details, "");
+  assert.equal(ep.state, "Paused · IMDb 8.4 · on Mac");
+  assert.equal(activityFor(row({}), now, { rating: null, cast: [] })!.hover, "");
 });
